@@ -42,5 +42,9 @@ next-env.d.ts
 .env.local
 
 # project docs & agent skills
-.context/
 .agents/
+context/
+
+# project config
+AGENTS.md
+CLAUDE.md
