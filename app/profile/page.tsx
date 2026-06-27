@@ -1,70 +1,152 @@
+import { Navbar } from "@/components/layout/Navbar";
+import { ProfileCompletionBanner } from "@/components/profile/ProfileCompletionBanner";
+import { ProfileSection } from "@/components/profile/ProfileSection";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { redirect } from "next/navigation";
-import { LogoutButton } from "@/components/layout/LogoutButton";
 import { PostHogIdentify } from "@/providers/posthog-identify";
+import { computeCompletion } from "@/lib/completion";
+import { redirect } from "next/navigation";
+import type { ProfileFormData, Education } from "@/types";
+
+function mapRowToFormData(row: Record<string, unknown>): ProfileFormData {
+  function splitDate(dateStr: string): { month: string; year: string } {
+    if (!dateStr) return { month: "", year: "" };
+    const parts = (dateStr as string).trim().split(" ");
+    if (parts.length >= 2) {
+      return { month: parts.slice(0, -1).join(" "), year: parts[parts.length - 1] };
+    }
+    return { month: "", year: dateStr };
+  }
+
+  const rawWorkExp = row.work_experience
+    ? (row.work_experience as Record<string, unknown>[])
+    : [];
+  const workExp = rawWorkExp.map((exp) => {
+    const hasNewFormat = "startMonth" in exp;
+    const startMonth = hasNewFormat
+      ? (exp.startMonth as string) ?? ""
+      : splitDate((exp.startDate as string) || "").month;
+    const startYear = hasNewFormat
+      ? (exp.startYear as string) ?? ""
+      : splitDate((exp.startDate as string) || "").year;
+    const endMonth = hasNewFormat
+      ? (exp.endMonth as string) ?? ""
+      : splitDate((exp.endDate as string) || "").month;
+    const endYear = hasNewFormat
+      ? (exp.endYear as string) ?? ""
+      : splitDate((exp.endDate as string) || "").year;
+    return {
+      companyName: (exp.companyName as string) || "",
+      jobTitle: (exp.jobTitle as string) || "",
+      startMonth,
+      startYear,
+      endMonth,
+      endYear,
+      currentlyWorking: exp.currentlyWorking as boolean,
+      responsibilities: (exp.responsibilities as string) || "",
+    };
+  });
+  const edu = row.education ? (row.education as Education) : null;
+
+  return {
+    full_name: (row.full_name as string) ?? "",
+    email: (row.email as string) ?? "",
+    phone: (row.phone as string) ?? "",
+    location: (row.location as string) ?? "",
+    current_title: (row.current_title as string) ?? "",
+    experience_level: (row.experience_level as string) ?? "",
+    years_experience: (row.years_experience as number) ?? null,
+    skills: (row.skills as string[]) ?? [],
+    industries: (row.industries as string[]) ?? [],
+    work_experience: workExp,
+    education: edu,
+    job_titles_seeking: (row.job_titles_seeking as string[]) ?? [],
+    remote_preference: (row.remote_preference as string) ?? "",
+    preferred_locations: (row.preferred_locations as string[]) ?? [],
+    salary_expectation: (row.salary_expectation as string) ?? "",
+    linkedin_url: (row.linkedin_url as string) ?? "",
+    portfolio_url: (row.portfolio_url as string) ?? "",
+    work_authorization: (row.work_authorization as string) ?? "",
+    cover_letter_tone: (row.cover_letter_tone as string) ?? "",
+  };
+}
+
+async function getProfileData(userId: string) {
+  const client = await createInsforgeServer();
+  const { data: profileRow } = await client.database
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+
+  return {
+    formData: profileRow ? mapRowToFormData(profileRow) : null,
+    resumeUrl: (profileRow?.resume_pdf_url as string) ?? null,
+    resumeKey: (profileRow?.resume_key as string) ?? null,
+    generatedUrl: (profileRow?.generated_resume_url as string) ?? null,
+    generatedKey: (profileRow?.generated_resume_key as string) ?? null,
+  };
+}
 
 export default async function ProfilePage() {
-  let user;
+  let userId: string;
+  let initialData: ProfileFormData | null = null;
+  let resumeUrl: string | null = null;
+  let resumeKey: string | null = null;
+  let generatedUrl: string | null = null;
+  let generatedKey: string | null = null;
 
   try {
     const client = await createInsforgeServer();
     const { data, error } = await client.auth.getCurrentUser();
     if (error || !data?.user) redirect("/login");
-    user = data.user;
+    userId = data.user.id;
+    const profile = await getProfileData(userId);
+    initialData = profile.formData;
+    resumeUrl = profile.resumeUrl;
+    resumeKey = profile.resumeKey;
+    generatedUrl = profile.generatedUrl;
+    generatedKey = profile.generatedKey;
   } catch {
     redirect("/login");
   }
 
-  const fullName = user.metadata?.["full_name"];
+  const bannerState = computeCompletion(
+    initialData ?? {
+      full_name: "",
+      email: "",
+      phone: "",
+      location: "",
+      current_title: "",
+      experience_level: "",
+      years_experience: null,
+      skills: [],
+      industries: [],
+      work_experience: [],
+      education: null,
+      job_titles_seeking: [],
+      remote_preference: "",
+      preferred_locations: [],
+      salary_expectation: "",
+      linkedin_url: "",
+      portfolio_url: "",
+      work_authorization: "",
+      cover_letter_tone: "",
+    },
+  );
 
   return (
-    <div className="min-h-screen bg-surface">
-      <PostHogIdentify userId={user.id} />
-      <div className="mx-auto max-w-2xl px-4 py-16">
-        <div className="rounded-2xl border border-border bg-surface p-8 shadow-card">
-          <h1 className="text-2xl font-bold text-text-primary">Profile</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            You are signed in.
-          </p>
-
-          <div className="mt-8 space-y-4">
-            <div>
-              <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
-                Email
-              </span>
-              <p className="mt-1 text-text-primary">
-                {user.email ?? "—"}
-              </p>
-            </div>
-
-            <div>
-              <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
-                Name
-              </span>
-              <p className="mt-1 text-text-primary">
-                {typeof fullName === "string" ? fullName : "—"}
-              </p>
-            </div>
-
-            {user.profile?.avatar_url && (
-              <div>
-                <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
-                  Avatar
-                </span>
-                <img
-                  src={user.profile.avatar_url}
-                  alt="avatar"
-                  className="mt-2 size-12 rounded-full"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="mt-8">
-            <LogoutButton />
-          </div>
+    <>
+      <Navbar />
+      <PostHogIdentify userId={userId} />
+      <main className="min-h-screen bg-background px-4 py-8 md:px-6 lg:px-8">
+        <div className="mx-auto max-w-[960px] space-y-6">
+          <ProfileCompletionBanner
+            completionPercentage={bannerState.completionPercentage}
+            missingFields={bannerState.missingFields}
+          />
+          <ProfileSection userId={userId} resumeUrl={resumeUrl} resumeKey={resumeKey} generatedUrl={generatedUrl} generatedKey={generatedKey} initialData={initialData} />
         </div>
-      </div>
-    </div>
+      </main>
+    </>
   );
 }

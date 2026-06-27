@@ -2,6 +2,7 @@ import { createAuthActions } from "@insforge/sdk/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createPostHogServer } from "@/lib/posthog-server";
+import { rateLimit } from "@/lib/rate-limiter";
 
 function wrapRequestCookies(request: NextRequest) {
   return {
@@ -24,6 +25,9 @@ function wrapResponseCookies(response: NextResponse) {
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimitResponse = rateLimit(request, { limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: "auth:callback" });
+  if (rateLimitResponse) return rateLimitResponse;
+
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get("insforge_code");
   const errorParam = searchParams.get("error");

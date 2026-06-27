@@ -1,15 +1,7 @@
 import { createServerClient } from "@insforge/sdk/ssr";
-import { cookies } from "next/headers";
+import { createCookieAdapter } from "@/lib/cookie-adapter";
 
 export async function createInsforgeServer() {
-  const cookieStore = await cookies();
-
-  return createServerClient({
-    cookies: {
-      get: (name: string) => {
-        const cookie = cookieStore.get(name);
-        return cookie?.value ?? null;
-      },
-    },
-  });
+  const cookieAdapter = await createCookieAdapter();
+  return createServerClient({ cookies: cookieAdapter });
 }

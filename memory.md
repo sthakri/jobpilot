@@ -1,45 +1,44 @@
-# Memory — Database Schema (Phase 1, Feature 04)
+# Memory — Project Complete + Production Hardening
 
-Last updated: 2026-06-20
+Last updated: 2026-06-26
 
 ## What was built
 
-**Created via `run-raw-sql` MCP tool:**
-- `profiles` table — 24 columns, PK referencing `auth.users(id)` ON DELETE CASCADE, RLS with 4 policies (select/insert/update/delete scoped to `id = auth.uid()`), `updated_at` auto-update trigger
-- `agent_runs` table — 8 columns, PK with `gen_random_uuid()`, FK to `profiles(id)` CASCADE, RLS (4 policies scoped to `user_id = auth.uid()`), CHECK constraint on `status IN ('running', 'completed', 'failed')`
-- `jobs` table — 24 columns, PK with `gen_random_uuid()`, FK to `profiles(id)` CASCADE and `agent_runs(id)` SET NULL, RLS (4 policies scoped to `user_id = auth.uid()`), CHECK constraint on `source IN ('search', 'url')`
-- `agent_logs` table — 7 columns, PK with `gen_random_uuid()`, FK to `profiles(id)` CASCADE, `agent_runs(id)` CASCADE, and `jobs(id)` SET NULL, RLS (4 policies scoped to `user_id = auth.uid()`), CHECK constraint on `level IN ('info', 'success', 'warning', 'error')`
-- Indexes: `user_id` on all four tables, `run_id` on `jobs` and `agent_logs`
-- `resumes` storage bucket — private, authenticated access only
+- **All 17 features complete** — Phase 1 (Foundation 4), Phase 2 (Profile 4), Phase 3 (Find Jobs 3), Phase 4 (Job Details 2), Phase 5 (Dashboard 4)
+- **Production hardening completed this session:**
+  - Health check endpoint at `app/api/health/route.ts` — returns `{ status: "ok", timestamp }`
+  - Security headers in `next.config.ts` — X-DNS-Prefetch-Control, X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy
+  - CORS origin restricted to `NEXT_PUBLIC_APP_URL` (no wildcard)
+  - Rate limiting in `lib/rate-limiter.ts` — in-memory store, applied to `/api/auth/callback` (10 req/15min per IP)
+  - Cleaned up `console.log` statements from admin routes (`app/api/admin/backfill-enrich/route.ts`)
+  - Security decisions documented in `SECURITY_DECISIONS.md` — npm audit moderate vulnerabilities deferred with 30-day review
+  - Fixed 3 ESLint warnings — removed unused `_req` parameters from admin/resume routes
 
 ## Decisions made
 
-- Foreign keys with cascading deletes: deleting a user cascades to profiles → agent_runs → jobs/agent_logs
-- RLS policies named with table prefix convention (`profiles_select_own`, `jobs_insert_own`, etc.) for clarity
-- `agent_logs.job_id` uses ON DELETE SET NULL — deleting a job preserves the log entry
-- `jobs.run_id` uses ON DELETE SET NULL — an agent run can be deleted without losing discovered jobs
-- Creation order matters: profiles → agent_runs → jobs → agent_logs (FK dependency chain)
-- Used `gen_random_uuid()` for all non-profile PKs (profiles PK is the auth.users UUID)
-- `is_complete` defaults to `false` — must be set explicitly when profile requirements are met
+- npm audit moderate vulnerabilities (postcss, @ai-sdk/provider-utils) deferred — transitive deps of Next.js 16/Stagehand 3, breaking changes to fix, not directly reachable. Review by 2026-07-26.
+- Rate limiting uses in-memory Map — sufficient for single-instance deployment, will need Redis for multi-instance
+- Security headers applied globally via next.config.ts headers() — no CSP yet (would need nonce/hash for inline scripts)
+- CORS restricted to specific origin from `NEXT_PUBLIC_APP_URL` env var
+- Health check at `/api/health` for infrastructure monitoring
+
+## Problems solved
+
+- `NextRequest.ip` doesn't exist in Next.js 16 — fixed by reading `x-forwarded-for` and `x-real-ip` headers
+- Admin route console.log cleanup — removed 6 logging statements that would pollute production logs
+- Build and lint pass clean — 0 errors, 0 warnings
 
 ## Current state
 
-- All four database tables exist with correct schemas, FKs, RLS policies, indexes, and CHECK constraints
-- `resumes` storage bucket exists (private, 0 objects)
-- Build plan progress-tracker.md updated — Feature 04 marked complete
-- Phase 1 Foundation complete: Homepage, Auth, PostHog, Database Schema all done
-- Next feature: 05 Profile Page — Full UI
+- **Project complete** — all 17 features from build-plan.md implemented and verified
+- **Production ready** — build passes, lint passes (0 errors, 0 warnings), TypeScript strict
+- **Security hardening done** — headers, rate limiting, health check, audit decisions documented, CORS secured
+- **Ready for deployment** — use InsForge `create-deployment` MCP tool
 
 ## Next session starts with
 
-Build Phase 2 — 05 Profile Page — Full UI:
-- Read context files per AGENTS.md order
-- Profile needs attention banner with completion percentage ring, missing field tags
-- Resume section — drag and drop upload area, Select Resume button, Generate Resume button
-- Profile Information form — Personal Info, Professional Info, Work Experience, Education, Job Preferences sections
-- Save Profile button at bottom
-- All UI with mock data initially — no save logic yet
+Deploy to production via InsForge hosting using `create-deployment` MCP tool. Then run post-launch verification: health check, error monitoring, critical user flow test.
 
 ## Open questions
 
-- None currently — Feature 04 scope was completed end to end
+- None — project is complete and production-ready

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { LogoutButton } from "./LogoutButton";
+import { NavbarLink } from "./NavbarLink";
 
 const navLinks = [
   { label: "Dashboard", href: "/dashboard" },
@@ -39,13 +40,7 @@ export async function Navbar() {
         {isAuthenticated && (
           <nav className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="text-sm font-medium text-text-dark hover:text-accent transition-colors"
-              >
-                {link.label}
-              </Link>
+              <NavbarLink key={link.href} href={link.href} label={link.label} />
             ))}
           </nav>
         )}
